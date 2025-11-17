@@ -39,6 +39,11 @@ export class GameEngine {
     // Initialize world manager
     this.worldManager = new WorldManager(this.renderer.scene);
 
+    // Set collision detection callback for camera controller
+    this.cameraController.setGetBlockCallback((x, y, z) =>
+      this.worldManager.getBlock(x, y, z)
+    );
+
     // Initialize raycaster
     this.raycaster = new VoxelRaycaster(10);
 
@@ -146,19 +151,18 @@ export class GameEngine {
       return;
     }
 
-    // Left click - break block
-    if (this.inputManager.isMouseButtonPressed(0)) {
+    // Left click - break block (use clicked, not pressed, to prevent continuous breaking)
+    if (this.inputManager.isMouseButtonClicked(0)) {
       this.worldManager.setBlock(
         Math.floor(this.selectedBlock.blockPosition.x),
         Math.floor(this.selectedBlock.blockPosition.y),
         Math.floor(this.selectedBlock.blockPosition.z),
         BlockType.AIR
       );
-      console.log('Block broken!');
     }
 
-    // Right click - place block
-    if (this.inputManager.isMouseButtonPressed(2)) {
+    // Right click - place block (use clicked, not pressed, to prevent continuous placing)
+    if (this.inputManager.isMouseButtonClicked(2)) {
       const placePos = this.raycaster.getPlacementPosition(this.selectedBlock);
       this.worldManager.setBlock(
         Math.floor(placePos.x),
@@ -166,7 +170,6 @@ export class GameEngine {
         Math.floor(placePos.z),
         this.currentBlockType
       );
-      console.log('Block placed!');
     }
   }
 
@@ -225,6 +228,9 @@ export class GameEngine {
 
     // Update FPS counter
     this.updateFPS();
+
+    // Clear per-frame input states
+    this.inputManager.clearFrameStates();
 
     // Continue loop
     requestAnimationFrame(this.gameLoop);

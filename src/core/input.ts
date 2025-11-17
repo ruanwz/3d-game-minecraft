@@ -4,6 +4,7 @@ export class InputManager {
   private keys = new Set<string>();
   private mouseMovement = { x: 0, y: 0 };
   private mouseButtons = new Set<number>();
+  private mouseClicked = new Set<number>(); // Track click events (cleared each frame)
   private pointerLocked = false;
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -46,6 +47,7 @@ export class InputManager {
 
     this.canvas.addEventListener('mousedown', (e) => {
       this.mouseButtons.add(e.button);
+      this.mouseClicked.add(e.button); // Register as clicked this frame
     });
 
     this.canvas.addEventListener('mouseup', (e) => {
@@ -84,6 +86,16 @@ export class InputManager {
   // Check if a mouse button is currently pressed
   isMouseButtonPressed(button: number): boolean {
     return this.mouseButtons.has(button);
+  }
+
+  // Check if a mouse button was clicked this frame (single click detection)
+  isMouseButtonClicked(button: number): boolean {
+    return this.mouseClicked.has(button);
+  }
+
+  // Clear per-frame input states (call at end of each frame)
+  clearFrameStates(): void {
+    this.mouseClicked.clear();
   }
 
   // Get mouse movement since last frame and reset it
