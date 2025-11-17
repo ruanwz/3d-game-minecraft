@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BlockType, isBlockTransparent, getBlockColor } from './block';
 import { CHUNK_SIZE, CHUNK_HEIGHT, BLOCK_SIZE } from '@/utils/constants';
+import { TerrainNoise } from '@/utils/noise';
 
 export class Chunk {
   public x: number; // Chunk X coordinate
@@ -8,12 +9,18 @@ export class Chunk {
   public blocks: Uint8Array;
   public mesh: THREE.Mesh | null = null;
   private needsUpdate = true;
+  private static terrainNoise: TerrainNoise | null = null;
 
   constructor(x: number, z: number) {
     this.x = x;
     this.z = z;
     // Initialize blocks array (x * z * y)
     this.blocks = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE * CHUNK_HEIGHT);
+
+    // Initialize terrain noise generator (shared across all chunks)
+    if (!Chunk.terrainNoise) {
+      Chunk.terrainNoise = new TerrainNoise(12345); // Use consistent seed
+    }
   }
 
   // Get block at local chunk coordinates (0-15, 0-63, 0-15)
@@ -35,33 +42,60 @@ export class Chunk {
     this.needsUpdate = true;
   }
 
-  // Generate simple terrain for this chunk
+  // Generate terrain using Perlin noise
   generate(): void {
+    if (!Chunk.terrainNoise) return;
+
+    const minHeight = 20; // Minimum terrain height
+    const maxHeight = CHUNK_HEIGHT - 10; // Maximum terrain height
+    const heightRange = maxHeight - minHeight;
+
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
-        // Simple terrain: create layers
         const worldX = this.x * CHUNK_SIZE + x;
         const worldZ = this.z * CHUNK_SIZE + z;
 
-        // Simple height map using sine waves for demo
-        const height = Math.floor(
-          32 +
-          Math.sin(worldX * 0.1) * 4 +
-          Math.cos(worldZ * 0.1) * 4 +
-          Math.sin(worldX * 0.05) * 8 +
-          Math.cos(worldZ * 0.05) * 8
-        );
+        // Get height from noise (0-1 range)
+        const heightNoise = Chunk.terrainNoise.getHeight(worldX, worldZ);
+        const height = Math.floor(minHeight + heightNoise * heightRange);
 
+        // Get biome value for this position
+        const biome = Chunk.terrainNoise.getBiome(worldX, worldZ);
+
+        // Generate columns based on height and biome
         for (let y = 0; y < CHUNK_HEIGHT; y++) {
           if (y === 0) {
-            this.setBlock(x, y, z, BlockType.STONE); // Bedrock
-          } else if (y < height - 4) {
+            // Bedrock layer
             this.setBlock(x, y, z, BlockType.STONE);
+          } else if (y < height - 4) {
+            // Check for caves
+            const caveDensity = Chunk.terrainNoise.getCaveDensity(worldX, y, worldZ);
+            if (caveDensity > 0.6 && y > 5) {
+              this.setBlock(x, y, z, BlockType.AIR); // Cave
+            } else {
+              this.setBlock(x, y, z, BlockType.STONE);
+            }
           } else if (y < height - 1) {
+            // Dirt layer
             this.setBlock(x, y, z, BlockType.DIRT);
           } else if (y === height - 1) {
-            this.setBlock(x, y, z, BlockType.GRASS);
+            // Surface layer - biome dependent
+            if (biome < 0.3) {
+              // Desert biome
+              this.setBlock(x, y, z, BlockType.SAND);
+            } else if (biome < 0.7) {
+              // Grass biome
+              this.setBlock(x, y, z, BlockType.GRASS);
+            } else {
+              // Snow/stone biome (high altitude or cold)
+              if (height > maxHeight * 0.7) {
+                this.setBlock(x, y, z, BlockType.STONE);
+              } else {
+                this.setBlock(x, y, z, BlockType.GRASS);
+              }
+            }
           } else {
+            // Air above surface
             this.setBlock(x, y, z, BlockType.AIR);
           }
         }
