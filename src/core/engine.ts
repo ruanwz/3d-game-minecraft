@@ -2,13 +2,22 @@ import { Renderer } from './renderer';
 import { CameraController } from './camera';
 import { InputManager } from './input';
 import { Chunk } from '@/world/chunk';
+import { WorldManager } from '@/world/worldManager';
+import { VoxelRaycaster, RaycastHit } from '@/world/raycaster';
+import { BlockType } from '@/world/block';
 import { FIXED_TIME_STEP, RENDER_DISTANCE } from '@/utils/constants';
+import * as THREE from 'three';
 
 export class GameEngine {
   private renderer: Renderer;
   private cameraController: CameraController;
   private inputManager: InputManager;
-  private chunks = new Map<string, Chunk>();
+  private worldManager: WorldManager;
+  private raycaster: VoxelRaycaster;
+
+  private selectedBlock: RaycastHit | null = null;
+  private selectionBox: THREE.LineSegments | null = null;
+  private currentBlockType: BlockType = BlockType.GRASS;
 
   private lastTime = 0;
   private accumulator = 0;
@@ -27,6 +36,15 @@ export class GameEngine {
     // Initialize camera controller
     this.cameraController = new CameraController(this.inputManager);
 
+    // Initialize world manager
+    this.worldManager = new WorldManager(this.renderer.scene);
+
+    // Initialize raycaster
+    this.raycaster = new VoxelRaycaster(10);
+
+    // Create selection box
+    this.createSelectionBox();
+
     // Generate initial chunks
     this.generateChunksAroundPlayer();
 
@@ -41,6 +59,15 @@ export class GameEngine {
     if (instructions) instructions.style.display = 'block';
   }
 
+  private createSelectionBox(): void {
+    // Create wireframe box for selected block
+    const geometry = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.01, 1.01, 1.01));
+    const material = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 });
+    this.selectionBox = new THREE.LineSegments(geometry, material);
+    this.selectionBox.visible = false;
+    this.renderer.scene.add(this.selectionBox);
+  }
+
   private generateChunksAroundPlayer(): void {
     const playerChunk = this.cameraController.getChunkPosition();
 
@@ -48,13 +75,12 @@ export class GameEngine {
       for (let z = -RENDER_DISTANCE; z <= RENDER_DISTANCE; z++) {
         const chunkX = playerChunk.x + x;
         const chunkZ = playerChunk.z + z;
-        const key = `${chunkX},${chunkZ}`;
 
-        if (!this.chunks.has(key)) {
+        if (!this.worldManager.getChunk(chunkX, chunkZ)) {
           const chunk = new Chunk(chunkX, chunkZ);
           chunk.generate();
           chunk.updateMesh(this.renderer.scene);
-          this.chunks.set(key, chunk);
+          this.worldManager.setChunk(chunk);
         }
       }
     }
@@ -64,21 +90,84 @@ export class GameEngine {
     const playerChunk = this.cameraController.getChunkPosition();
 
     // Remove far chunks
-    const chunksToRemove: string[] = [];
-    this.chunks.forEach((chunk, key) => {
+    const chunksToRemove: Array<{ x: number; z: number }> = [];
+    this.worldManager.getAllChunks().forEach((chunk) => {
       const dx = Math.abs(chunk.x - playerChunk.x);
       const dz = Math.abs(chunk.z - playerChunk.z);
 
       if (dx > RENDER_DISTANCE + 1 || dz > RENDER_DISTANCE + 1) {
-        chunk.dispose(this.renderer.scene);
-        chunksToRemove.push(key);
+        chunksToRemove.push({ x: chunk.x, z: chunk.z });
       }
     });
 
-    chunksToRemove.forEach(key => this.chunks.delete(key));
+    chunksToRemove.forEach(({ x, z }) => this.worldManager.removeChunk(x, z));
 
     // Generate new chunks
     this.generateChunksAroundPlayer();
+  }
+
+  private updateBlockSelection(): void {
+    if (!this.inputManager.isPointerLocked()) {
+      this.selectedBlock = null;
+      if (this.selectionBox) this.selectionBox.visible = false;
+      return;
+    }
+
+    // Cast ray from camera
+    const cameraPos = this.cameraController.camera.position;
+    const cameraDir = new THREE.Vector3();
+    this.cameraController.camera.getWorldDirection(cameraDir);
+
+    const hit = this.raycaster.cast(
+      cameraPos,
+      cameraDir,
+      (x, y, z) => this.worldManager.getBlock(Math.floor(x), Math.floor(y), Math.floor(z))
+    );
+
+    this.selectedBlock = hit;
+
+    // Update selection box
+    if (this.selectionBox) {
+      if (hit) {
+        this.selectionBox.position.set(
+          hit.blockPosition.x + 0.5,
+          hit.blockPosition.y + 0.5,
+          hit.blockPosition.z + 0.5
+        );
+        this.selectionBox.visible = true;
+      } else {
+        this.selectionBox.visible = false;
+      }
+    }
+  }
+
+  private handleBlockInteraction(): void {
+    if (!this.inputManager.isPointerLocked() || !this.selectedBlock) {
+      return;
+    }
+
+    // Left click - break block
+    if (this.inputManager.isMouseButtonPressed(0)) {
+      this.worldManager.setBlock(
+        Math.floor(this.selectedBlock.blockPosition.x),
+        Math.floor(this.selectedBlock.blockPosition.y),
+        Math.floor(this.selectedBlock.blockPosition.z),
+        BlockType.AIR
+      );
+      console.log('Block broken!');
+    }
+
+    // Right click - place block
+    if (this.inputManager.isMouseButtonPressed(2)) {
+      const placePos = this.raycaster.getPlacementPosition(this.selectedBlock);
+      this.worldManager.setBlock(
+        Math.floor(placePos.x),
+        Math.floor(placePos.y),
+        Math.floor(placePos.z),
+        this.currentBlockType
+      );
+      console.log('Block placed!');
+    }
   }
 
   private updatePhysics(deltaTime: number): void {
@@ -89,6 +178,12 @@ export class GameEngine {
   private updateGame(_deltaTime: number): void {
     // Update chunks based on player position
     this.updateChunks();
+
+    // Update block selection
+    this.updateBlockSelection();
+
+    // Handle block interaction
+    this.handleBlockInteraction();
   }
 
   private updateFPS(): void {
@@ -156,8 +251,7 @@ export class GameEngine {
 
   dispose(): void {
     this.stop();
-    this.chunks.forEach(chunk => chunk.dispose(this.renderer.scene));
-    this.chunks.clear();
+    this.worldManager.clear();
     this.renderer.dispose();
   }
 }
