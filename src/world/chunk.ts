@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { BlockType, isBlockTransparent, getBlockColor } from './block';
+import { BlockType } from './block';
 import { CHUNK_SIZE, CHUNK_HEIGHT, BLOCK_SIZE } from '@/utils/constants';
 import { TerrainNoise } from '@/utils/noise';
+import { GreedyMesher } from './greedyMesher';
 
 export class Chunk {
   public x: number; // Chunk X coordinate
@@ -104,75 +105,10 @@ export class Chunk {
     this.needsUpdate = true;
   }
 
-  // Create mesh for this chunk (simple version - one cube per block)
+  // Create optimized mesh using greedy meshing algorithm
   createMesh(): THREE.Mesh {
-    const geometry = new THREE.BufferGeometry();
-    const vertices: number[] = [];
-    const colors: number[] = [];
-    const indices: number[] = [];
-
-    let vertexCount = 0;
-
-    // Iterate through all blocks
-    for (let y = 0; y < CHUNK_HEIGHT; y++) {
-      for (let z = 0; z < CHUNK_SIZE; z++) {
-        for (let x = 0; x < CHUNK_SIZE; x++) {
-          const blockType = this.getBlock(x, y, z);
-
-          // Skip air blocks
-          if (blockType === BlockType.AIR) continue;
-
-          const color = new THREE.Color(getBlockColor(blockType));
-
-          // World position of this block
-          const wx = x * BLOCK_SIZE;
-          const wy = y * BLOCK_SIZE;
-          const wz = z * BLOCK_SIZE;
-
-          // Check each face and only add if adjacent block is transparent
-          const faces = [
-            { dir: [0, 1, 0], corners: [[0,1,0],[1,1,0],[1,1,1],[0,1,1]] }, // Top
-            { dir: [0, -1, 0], corners: [[0,0,1],[1,0,1],[1,0,0],[0,0,0]] }, // Bottom
-            { dir: [1, 0, 0], corners: [[1,0,0],[1,1,0],[1,1,1],[1,0,1]] }, // Right
-            { dir: [-1, 0, 0], corners: [[0,0,1],[0,1,1],[0,1,0],[0,0,0]] }, // Left
-            { dir: [0, 0, 1], corners: [[0,0,1],[0,1,1],[1,1,1],[1,0,1]] }, // Front
-            { dir: [0, 0, -1], corners: [[1,0,0],[1,1,0],[0,1,0],[0,0,0]] }, // Back
-          ];
-
-          for (const face of faces) {
-            const [dx, dy, dz] = face.dir;
-            const neighborBlock = this.getBlock(x + dx, y + dy, z + dz);
-
-            // Only render face if neighbor is transparent or air
-            if (isBlockTransparent(neighborBlock) || neighborBlock === BlockType.AIR) {
-              const startVertex = vertexCount;
-
-              // Add 4 vertices for this face
-              for (const corner of face.corners) {
-                vertices.push(
-                  wx + corner[0] * BLOCK_SIZE,
-                  wy + corner[1] * BLOCK_SIZE,
-                  wz + corner[2] * BLOCK_SIZE
-                );
-                colors.push(color.r, color.g, color.b);
-                vertexCount++;
-              }
-
-              // Add 2 triangles (6 indices) for this face
-              indices.push(
-                startVertex, startVertex + 1, startVertex + 2,
-                startVertex, startVertex + 2, startVertex + 3
-              );
-            }
-          }
-        }
-      }
-    }
-
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    geometry.setIndex(indices);
-    geometry.computeVertexNormals();
+    // Use greedy meshing for optimized geometry
+    const geometry = GreedyMesher.generateMesh((x, y, z) => this.getBlock(x, y, z));
 
     const material = new THREE.MeshLambertMaterial({
       vertexColors: true,
