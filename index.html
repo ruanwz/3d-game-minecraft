@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Minecraft - 网页版我的世界</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #87CEEB;
+    }
+
+    #game-container {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+    }
+
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      font-size: 24px;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+      z-index: 10;
+    }
+
+    #hud {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-size: 14px;
+      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+      z-index: 5;
+      font-family: monospace;
+    }
+
+    #crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 20px;
+      height: 20px;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    #crosshair::before,
+    #crosshair::after {
+      content: '';
+      position: absolute;
+      background: rgba(255, 255, 255, 0.8);
+    }
+
+    #crosshair::before {
+      left: 50%;
+      top: 20%;
+      transform: translateX(-50%);
+      width: 2px;
+      height: 60%;
+    }
+
+    #crosshair::after {
+      top: 50%;
+      left: 20%;
+      transform: translateY(-50%);
+      height: 2px;
+      width: 60%;
+    }
+
+    #instructions {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: white;
+      text-align: center;
+      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+      z-index: 5;
+    }
+
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <div id="loading">加载中...</div>
+
+    <div id="hud" style="display: none;">
+      <div>FPS: <span id="fps">60</span></div>
+      <div>位置: <span id="position">0, 0, 0</span></div>
+      <div>区块: <span id="chunk">0, 0</span></div>
+    </div>
+
+    <div id="crosshair" style="display: none;"></div>
+
+    <div id="instructions" style="display: none;">
+      点击屏幕开始游戏<br>
+      WASD - 移动 | 空格 - 跳跃 | Shift - 下降<br>
+      鼠标 - 视角 | 左键 - 破坏方块 | 右键 - 放置方块<br>
+      ESC - 退出指针锁定
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
