@@ -47,10 +47,14 @@ export class TouchControls {
         const jumpBtn = this.createButton('Jump', 'jump-btn');
         const breakBtn = this.createButton('Break', 'break-btn');
         const placeBtn = this.createButton('Place', 'place-btn');
+        const bowBtn = this.createButton('Bow', 'bow-btn');
+        const tntBtn = this.createButton('TNT', 'tnt-btn');
 
         buttonContainer.appendChild(placeBtn);
         buttonContainer.appendChild(breakBtn);
         buttonContainer.appendChild(jumpBtn);
+        buttonContainer.appendChild(bowBtn);
+        buttonContainer.appendChild(tntBtn);
 
         this.touchContainer.appendChild(joystickZone);
         this.touchContainer.appendChild(lookZone);
@@ -63,6 +67,8 @@ export class TouchControls {
         this.setupButtonListeners(jumpBtn, 'jump');
         this.setupButtonListeners(breakBtn, 'break');
         this.setupButtonListeners(placeBtn, 'place');
+        this.setupButtonListeners(bowBtn, 'bow');
+        this.setupButtonListeners(tntBtn, 'tnt');
     }
 
     private createButton(text: string, id: string): HTMLElement {

@@ -5,6 +5,9 @@ import { Chunk } from '@/world/chunk';
 import { WorldManager } from '@/world/worldManager';
 import { VoxelRaycaster, RaycastHit } from '@/world/raycaster';
 import { BlockType } from '@/world/block';
+import { EntityManager } from '@/entities/entityManager';
+import { Arrow } from '@/entities/projectile';
+import { TNTEntity } from '@/entities/explosive';
 import { FIXED_TIME_STEP, RENDER_DISTANCE } from '@/utils/constants';
 import * as THREE from 'three';
 
@@ -13,6 +16,7 @@ export class GameEngine {
   private cameraController: CameraController;
   private inputManager: InputManager;
   private worldManager: WorldManager;
+  public entityManager: EntityManager;
   private raycaster: VoxelRaycaster;
 
   private selectedBlock: RaycastHit | null = null;
@@ -38,6 +42,9 @@ export class GameEngine {
 
     // Initialize world manager
     this.worldManager = new WorldManager(this.renderer.scene);
+
+    // Initialize entity manager
+    this.entityManager = new EntityManager(this.renderer.scene, this.worldManager);
 
     // Set collision detection callback for camera controller
     this.cameraController.setGetBlockCallback((x, y, z) =>
@@ -202,6 +209,27 @@ export class GameEngine {
         this.lastInteractionTime = now;
       }
     }
+
+    // Bow - Shoot Arrow
+    if (this.inputManager.isKeyPressed('KeyF') || (this.inputManager as any).touchControls?.isButtonPressed('bow')) {
+      const cameraDir = new THREE.Vector3();
+      this.cameraController.camera.getWorldDirection(cameraDir);
+      const spawnPos = this.cameraController.camera.position.clone().add(cameraDir.clone().multiplyScalar(1.0));
+
+      const arrow = new Arrow(spawnPos.x, spawnPos.y, spawnPos.z, cameraDir);
+      this.entityManager.addEntity(arrow);
+      console.log('Arrow shot!');
+      this.lastInteractionTime = now;
+    }
+
+    // TNT - Place Explosive
+    if (this.inputManager.isKeyPressed('KeyG') || (this.inputManager as any).touchControls?.isButtonPressed('tnt')) {
+      const spawnPos = this.cameraController.camera.position.clone();
+      const tnt = new TNTEntity(spawnPos.x, spawnPos.y, spawnPos.z);
+      this.entityManager.addEntity(tnt);
+      console.log('TNT placed!');
+      this.lastInteractionTime = now;
+    }
   }
   private updatePhysics(deltaTime: number): void {
     // Update camera/player physics
@@ -211,6 +239,9 @@ export class GameEngine {
   private updateGame(_deltaTime: number): void {
     // Update chunks based on player position
     this.updateChunks();
+
+    // Update entities
+    this.entityManager.update(_deltaTime);
 
     // Update block selection
     this.updateBlockSelection();

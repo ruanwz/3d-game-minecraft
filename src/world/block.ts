@@ -8,6 +8,10 @@ export enum BlockType {
   LEAVES = 5,
   SAND = 6,
   WATER = 7,
+  PLANKS = 8,
+  BRICKS = 9,
+  TNT = 10,
+  LOG = 11,
 }
 
 // Block properties
@@ -67,6 +71,30 @@ export const BLOCK_REGISTRY: Record<BlockType, BlockProperties> = {
     solid: false,
     transparent: true,
     color: 0x4169e1,
+  },
+  [BlockType.PLANKS]: {
+    name: 'Planks',
+    solid: true,
+    transparent: false,
+    color: 0xa0522d,
+  },
+  [BlockType.BRICKS]: {
+    name: 'Bricks',
+    solid: true,
+    transparent: false,
+    color: 0xb22222,
+  },
+  [BlockType.TNT]: {
+    name: 'TNT',
+    solid: true,
+    transparent: false,
+    color: 0xff0000,
+  },
+  [BlockType.LOG]: {
+    name: 'Log',
+    solid: true,
+    transparent: false,
+    color: 0x5c4033,
   },
 };
 

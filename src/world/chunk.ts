@@ -103,6 +103,124 @@ export class Chunk {
       }
     }
     this.needsUpdate = true;
+
+    // Decorate chunk (Trees, etc.)
+    this.decorate();
+  }
+
+  decorate(): void {
+    if (!Chunk.terrainNoise) return;
+
+    // Simple seeded random for decoration
+    const seed = this.x * 10000 + this.z;
+    const random = (n: number) => {
+      const x = Math.sin(seed + n) * 10000;
+      return x - Math.floor(x);
+    };
+
+    for (let x = 2; x < CHUNK_SIZE - 2; x++) {
+      for (let z = 2; z < CHUNK_SIZE - 2; z++) {
+        // Get surface height
+        // We need to find the top block. Since we just generated, we can scan down.
+        let surfaceY = -1;
+        for (let y = CHUNK_HEIGHT - 1; y > 0; y--) {
+          if (this.getBlock(x, y, z) !== BlockType.AIR) {
+            surfaceY = y;
+            break;
+          }
+        }
+
+        if (surfaceY > 0) {
+          const surfaceBlock = this.getBlock(x, surfaceY, z);
+
+          // Trees on Grass
+          if (surfaceBlock === BlockType.GRASS) {
+            // 2% chance for tree
+            if (random(x * z) < 0.02) {
+              this.generateTree(x, surfaceY + 1, z);
+            }
+            // 0.5% chance for house (rare)
+            else if (random(x * z + 100) < 0.005) {
+              this.generateHouse(x, surfaceY + 1, z);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  generateTree(x: number, y: number, z: number): void {
+    const height = 4 + Math.floor(Math.random() * 2);
+
+    // Trunk
+    for (let i = 0; i < height; i++) {
+      this.setBlock(x, y + i, z, BlockType.LOG);
+    }
+
+    // Leaves
+    for (let lx = x - 2; lx <= x + 2; lx++) {
+      for (let ly = y + height - 2; ly <= y + height + 1; ly++) {
+        for (let lz = z - 2; lz <= z + 2; lz++) {
+          // Skip corners to make it rounder
+          if (Math.abs(lx - x) === 2 && Math.abs(lz - z) === 2) continue;
+
+          // Don't overwrite trunk
+          if (lx === x && lz === z && ly < y + height) continue;
+
+          // Set leaves if empty
+          if (this.getBlock(lx, ly, lz) === BlockType.AIR) {
+            this.setBlock(lx, ly, lz, BlockType.LEAVES);
+          }
+        }
+      }
+    }
+  }
+
+  generateHouse(x: number, y: number, z: number): void {
+    // Simple 5x5x4 house
+    const width = 5;
+    const height = 4;
+    const depth = 5;
+
+    // Check bounds
+    if (x + width >= CHUNK_SIZE || z + depth >= CHUNK_SIZE) return;
+
+    for (let hx = 0; hx < width; hx++) {
+      for (let hz = 0; hz < depth; hz++) {
+        for (let hy = 0; hy < height; hy++) {
+          const bx = x + hx;
+          const by = y + hy;
+          const bz = z + hz;
+
+          // Floor
+          if (hy === 0) {
+            this.setBlock(bx, by, bz, BlockType.PLANKS);
+          }
+          // Walls
+          else if (hx === 0 || hx === width - 1 || hz === 0 || hz === depth - 1) {
+            // Door
+            if (hx === 2 && hz === 0 && hy < 3) {
+              this.setBlock(bx, by, bz, BlockType.AIR);
+            }
+            // Windows
+            else if ((hx === 0 || hx === width - 1) && hz === 2 && hy === 2) {
+              this.setBlock(bx, by, bz, BlockType.AIR);
+            }
+            else {
+              this.setBlock(bx, by, bz, BlockType.BRICKS);
+            }
+          }
+          // Roof
+          else if (hy === height - 1) {
+            this.setBlock(bx, by, bz, BlockType.PLANKS);
+          }
+          // Inside
+          else {
+            this.setBlock(bx, by, bz, BlockType.AIR);
+          }
+        }
+      }
+    }
   }
 
   // Create optimized mesh using greedy meshing algorithm
