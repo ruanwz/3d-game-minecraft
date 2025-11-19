@@ -124,8 +124,8 @@ export class TouchControls {
                     const dx = touch.clientX - this.lookData.lastX;
                     const dy = touch.clientY - this.lookData.lastY;
 
-                    this.lookData.deltaX += dx * MOUSE_SENSITIVITY * 0.5; // Adjust sensitivity for touch
-                    this.lookData.deltaY += dy * MOUSE_SENSITIVITY * 0.5;
+                    this.lookData.deltaX += dx * MOUSE_SENSITIVITY * 3.0; // Adjust sensitivity for touch
+                    this.lookData.deltaY += dy * MOUSE_SENSITIVITY * 3.0;
 
                     this.lookData.lastX = touch.clientX;
                     this.lookData.lastY = touch.clientY;

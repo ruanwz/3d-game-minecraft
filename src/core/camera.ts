@@ -141,9 +141,26 @@ export class CameraController {
         // Collision with ground
         const blockTop = blockBelowY + 1;
         if (playerBottom < blockTop) {
-          newPos.y = blockTop + PLAYER_HEIGHT;
-          this.velocity.y = 0;
-          this.isOnGround = true;
+          // Check if we can step up (is there space above the block?)
+          const spaceAboveBlock = this.getBlockCallback(checkX, blockTop, checkZ);
+          const spaceAboveBlock2 = this.getBlockCallback(checkX, blockTop + 1, checkZ);
+
+          if (spaceAboveBlock === BlockType.AIR && spaceAboveBlock2 === BlockType.AIR) {
+            // Can step up
+            newPos.y = blockTop + PLAYER_HEIGHT;
+            this.velocity.y = 0;
+            this.isOnGround = true;
+          } else {
+            // Cannot step up, treat as wall
+            const dx = newPos.x - checkX - 0.5;
+            const dz = newPos.z - checkZ - 0.5;
+
+            if (Math.abs(dx) > Math.abs(dz)) {
+              newPos.x = checkX + 0.5 + Math.sign(dx) * (checkRadius + 0.1);
+            } else {
+              newPos.z = checkZ + 0.5 + Math.sign(dz) * (checkRadius + 0.1);
+            }
+          }
         }
       }
 
