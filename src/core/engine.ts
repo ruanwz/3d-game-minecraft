@@ -146,33 +146,63 @@ export class GameEngine {
     }
   }
 
+  private lastInteractionTime = 0;
+
   private handleBlockInteraction(): void {
-    if (!this.inputManager.isPointerLocked() || !this.selectedBlock) {
+    // Update debug info
+    const debugElement = document.getElementById('debug');
+    if (debugElement) {
+      // We need access to touchControls to show active buttons. 
+      // Since inputManager has it private, we might need to expose it or just rely on console logs for now?
+      // Actually, let's cast inputManager to any to access it for debug, or better, add a method to InputManager.
+      // For now, let's just show if pointer is locked.
+      const locked = this.inputManager.isPointerLocked();
+      debugElement.textContent = `Locked: ${locked}`;
+
+      // Access touch controls via a dirty cast for debug purposes if needed, 
+      // but let's try to be cleaner. 
+      // Let's skip button debug in HUD for a second and focus on the cooldown.
+    }
+
+    if (!this.inputManager.isPointerLocked()) {
       return;
     }
 
-    // Left click - break block (use clicked, not pressed, to prevent continuous breaking)
-    if (this.inputManager.isMouseButtonClicked(0)) {
-      this.worldManager.setBlock(
-        Math.floor(this.selectedBlock.blockPosition.x),
-        Math.floor(this.selectedBlock.blockPosition.y),
-        Math.floor(this.selectedBlock.blockPosition.z),
-        BlockType.AIR
-      );
+    // Cooldown check
+    const now = Date.now();
+    if (now - this.lastInteractionTime < 200) {
+      return;
     }
 
-    // Right click - place block (use clicked, not pressed, to prevent continuous placing)
-    if (this.inputManager.isMouseButtonClicked(2)) {
-      const placePos = this.raycaster.getPlacementPosition(this.selectedBlock);
-      this.worldManager.setBlock(
-        Math.floor(placePos.x),
-        Math.floor(placePos.y),
-        Math.floor(placePos.z),
-        this.currentBlockType
-      );
+    // Left click - break block
+    if (this.inputManager.isMouseButtonPressed(0)) {
+      if (this.selectedBlock) {
+        this.worldManager.setBlock(
+          Math.floor(this.selectedBlock.blockPosition.x),
+          Math.floor(this.selectedBlock.blockPosition.y),
+          Math.floor(this.selectedBlock.blockPosition.z),
+          BlockType.AIR
+        );
+        console.log('Block broken!');
+        this.lastInteractionTime = now;
+      }
+    }
+
+    // Right click - place block
+    if (this.inputManager.isMouseButtonPressed(2)) {
+      if (this.selectedBlock) {
+        const placePos = this.raycaster.getPlacementPosition(this.selectedBlock);
+        this.worldManager.setBlock(
+          Math.floor(placePos.x),
+          Math.floor(placePos.y),
+          Math.floor(placePos.z),
+          this.currentBlockType
+        );
+        console.log('Block placed!');
+        this.lastInteractionTime = now;
+      }
     }
   }
-
   private updatePhysics(deltaTime: number): void {
     // Update camera/player physics
     this.cameraController.update(deltaTime);

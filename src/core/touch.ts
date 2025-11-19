@@ -57,6 +57,12 @@ export class TouchControls {
         this.touchContainer.appendChild(buttonContainer);
 
         document.body.appendChild(this.touchContainer);
+
+        // Setup listeners directly on created elements
+        this.setupZoneListeners(joystickZone, lookZone);
+        this.setupButtonListeners(jumpBtn, 'jump');
+        this.setupButtonListeners(breakBtn, 'break');
+        this.setupButtonListeners(placeBtn, 'place');
     }
 
     private createButton(text: string, id: string): HTMLElement {
@@ -67,102 +73,92 @@ export class TouchControls {
         return btn;
     }
 
-    private setupEventListeners(): void {
-        if (!this.touchContainer) return;
-
-        const joystickZone = document.getElementById('joystick-zone');
-        const lookZone = document.getElementById('look-zone');
-        const jumpBtn = document.getElementById('jump-btn');
-        const breakBtn = document.getElementById('break-btn');
-        const placeBtn = document.getElementById('place-btn');
-
+    private setupZoneListeners(joystickZone: HTMLElement, lookZone: HTMLElement): void {
         // Joystick Logic
-        if (joystickZone) {
-            joystickZone.addEventListener('touchstart', (e) => {
-                e.preventDefault();
+        joystickZone.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.changedTouches[0];
+            this.joystickData.active = true;
+            this.joystickData.originX = touch.clientX;
+            this.joystickData.originY = touch.clientY;
+            this.updateJoystickVisuals(touch.clientX, touch.clientY);
+        }, { passive: false });
+
+        joystickZone.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (this.joystickData.active) {
                 const touch = e.changedTouches[0];
-                this.joystickData.active = true;
-                this.joystickData.originX = touch.clientX;
-                this.joystickData.originY = touch.clientY;
                 this.updateJoystickVisuals(touch.clientX, touch.clientY);
-            }, { passive: false });
+            }
+        }, { passive: false });
 
-            joystickZone.addEventListener('touchmove', (e) => {
-                e.preventDefault();
-                if (this.joystickData.active) {
-                    const touch = e.changedTouches[0];
-                    this.updateJoystickVisuals(touch.clientX, touch.clientY);
-                }
-            }, { passive: false });
-
-            const endJoystick = (e: TouchEvent) => {
-                e.preventDefault();
-                this.joystickData.active = false;
-                this.joystickData.x = 0;
-                this.joystickData.y = 0;
-                this.resetJoystickVisuals();
-            };
-
-            joystickZone.addEventListener('touchend', endJoystick);
-            joystickZone.addEventListener('touchcancel', endJoystick);
-        }
-
-        // Look Logic
-        if (lookZone) {
-            lookZone.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                const touch = e.changedTouches[0];
-                this.lookData.active = true;
-                this.lookData.lastX = touch.clientX;
-                this.lookData.lastY = touch.clientY;
-            }, { passive: false });
-
-            lookZone.addEventListener('touchmove', (e) => {
-                e.preventDefault();
-                if (this.lookData.active) {
-                    const touch = e.changedTouches[0];
-                    const dx = touch.clientX - this.lookData.lastX;
-                    const dy = touch.clientY - this.lookData.lastY;
-
-                    this.lookData.deltaX += dx * MOUSE_SENSITIVITY * 3.0; // Adjust sensitivity for touch
-                    this.lookData.deltaY += dy * MOUSE_SENSITIVITY * 3.0;
-
-                    this.lookData.lastX = touch.clientX;
-                    this.lookData.lastY = touch.clientY;
-                }
-            }, { passive: false });
-
-            const endLook = (e: TouchEvent) => {
-                e.preventDefault();
-                this.lookData.active = false;
-            };
-
-            lookZone.addEventListener('touchend', endLook);
-            lookZone.addEventListener('touchcancel', endLook);
-        }
-
-        // Buttons
-        const setupButton = (btn: HTMLElement | null, action: string) => {
-            if (!btn) return;
-            btn.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                this.buttons.add(action);
-                btn.classList.add('active');
-            }, { passive: false });
-
-            const endBtn = (e: TouchEvent) => {
-                e.preventDefault();
-                this.buttons.delete(action);
-                btn.classList.remove('active');
-            };
-
-            btn.addEventListener('touchend', endBtn);
-            btn.addEventListener('touchcancel', endBtn);
+        const endJoystick = (e: TouchEvent) => {
+            e.preventDefault();
+            this.joystickData.active = false;
+            this.joystickData.x = 0;
+            this.joystickData.y = 0;
+            this.resetJoystickVisuals();
         };
 
-        setupButton(jumpBtn, 'jump');
-        setupButton(breakBtn, 'break');
-        setupButton(placeBtn, 'place');
+        joystickZone.addEventListener('touchend', endJoystick);
+        joystickZone.addEventListener('touchcancel', endJoystick);
+
+        // Look Logic
+        lookZone.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.changedTouches[0];
+            this.lookData.active = true;
+            this.lookData.lastX = touch.clientX;
+            this.lookData.lastY = touch.clientY;
+        }, { passive: false });
+
+        lookZone.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (this.lookData.active) {
+                const touch = e.changedTouches[0];
+                const dx = touch.clientX - this.lookData.lastX;
+                const dy = touch.clientY - this.lookData.lastY;
+
+                this.lookData.deltaX += dx * MOUSE_SENSITIVITY * 3.0; // Adjust sensitivity for touch
+                this.lookData.deltaY += dy * MOUSE_SENSITIVITY * 3.0;
+
+                this.lookData.lastX = touch.clientX;
+                this.lookData.lastY = touch.clientY;
+            }
+        }, { passive: false });
+
+        const endLook = (e: TouchEvent) => {
+            e.preventDefault();
+            this.lookData.active = false;
+        };
+
+        lookZone.addEventListener('touchend', endLook);
+        lookZone.addEventListener('touchcancel', endLook);
+    }
+
+    private setupButtonListeners(btn: HTMLElement, action: string): void {
+        btn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            e.stopPropagation(); // Stop propagation to prevent other handlers
+            this.buttons.add(action);
+            btn.classList.add('active');
+            console.log(`Button pressed: ${action}`); // Debug log
+        }, { passive: false });
+
+        const endBtn = (e: TouchEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.buttons.delete(action);
+            btn.classList.remove('active');
+            console.log(`Button released: ${action}`); // Debug log
+        };
+
+        btn.addEventListener('touchend', endBtn);
+        btn.addEventListener('touchcancel', endBtn);
+    }
+
+    private setupEventListeners(): void {
+        // Deprecated, logic moved to createUI to use direct references
     }
 
     private updateJoystickVisuals(currentX: number, currentY: number): void {
@@ -218,5 +214,9 @@ export class TouchControls {
 
     isActive(): boolean {
         return this.joystickData.active || this.lookData.active || this.buttons.size > 0;
+    }
+
+    getActiveButtons(): string {
+        return Array.from(this.buttons).join(', ');
     }
 }
