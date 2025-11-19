@@ -83,6 +83,18 @@ export class CameraController {
     // Apply speed to horizontal movement
     this.direction.multiplyScalar(PLAYER_SPEED);
 
+    // --- Physics Step 1: Horizontal Movement ---
+    const horizontalVelocity = this.direction.clone().multiplyScalar(deltaTime);
+    const newPos = this.camera.position.clone().add(horizontalVelocity);
+
+    // Check horizontal collisions (X/Z)
+    this.checkHorizontalCollisions(newPos);
+
+    // Apply valid horizontal position
+    this.camera.position.x = newPos.x;
+    this.camera.position.z = newPos.z;
+
+    // --- Physics Step 2: Vertical Movement ---
     // Apply gravity
     this.velocity.y -= GRAVITY * deltaTime;
 
@@ -92,104 +104,155 @@ export class CameraController {
       this.isOnGround = false;
     }
 
-    // Apply horizontal movement
-    const newPos = this.camera.position.clone();
-    newPos.addScaledVector(this.direction, deltaTime);
+    // Apply vertical velocity
+    const verticalMovement = this.velocity.y * deltaTime;
+    newPos.y = this.camera.position.y + verticalMovement;
 
-    // Apply vertical movement (gravity/jump)
-    newPos.y += this.velocity.y * deltaTime;
+    // Check vertical collisions (Y)
+    this.checkVerticalCollisions(newPos);
 
-    // Check collision with ground
-    this.checkCollision(newPos);
-
-    // Update position
-    this.camera.position.copy(newPos);
+    // Apply valid vertical position
+    this.camera.position.y = newPos.y;
 
     // Update HUD
     this.updateHUD();
   }
 
-  private checkCollision(newPos: THREE.Vector3): void {
-    if (!this.getBlockCallback) {
-      return;
-    }
+  private checkHorizontalCollisions(newPos: THREE.Vector3): void {
+    if (!this.getBlockCallback) return;
 
-    const playerBottom = newPos.y - PLAYER_HEIGHT;
-    const playerTop = newPos.y + 0.2;
+    const playerRadius = 0.3;
+    const playerHeight = PLAYER_HEIGHT;
 
-    // Check multiple points around the player for collision
-    const checkRadius = 0.3;
+    // Check points around the player's circumference
+    // We check at feet level and head level
+    const yLevels = [0, 1]; // Relative to bottom
     const checks = [
-      { x: 0, z: 0 },
-      { x: checkRadius, z: 0 },
-      { x: -checkRadius, z: 0 },
-      { x: 0, z: checkRadius },
-      { x: 0, z: -checkRadius },
+      { x: playerRadius, z: 0 },
+      { x: -playerRadius, z: 0 },
+      { x: 0, z: playerRadius },
+      { x: 0, z: -playerRadius },
+      { x: playerRadius * 0.7, z: playerRadius * 0.7 },
+      { x: playerRadius * 0.7, z: -playerRadius * 0.7 },
+      { x: -playerRadius * 0.7, z: playerRadius * 0.7 },
+      { x: -playerRadius * 0.7, z: -playerRadius * 0.7 },
     ];
 
-    this.isOnGround = false;
+    const playerBottom = this.camera.position.y - playerHeight; // Use current Y for horizontal check
 
-    for (const check of checks) {
-      const checkX = Math.floor(newPos.x + check.x);
-      const checkZ = Math.floor(newPos.z + check.z);
+    for (const yOffset of yLevels) {
+      for (const check of checks) {
+        const checkX = newPos.x + check.x;
+        const checkY = playerBottom + yOffset + 0.1; // +0.1 to be slightly inside the block vertically
+        const checkZ = newPos.z + check.z;
 
-      // Check block below player
-      const blockBelowY = Math.floor(playerBottom);
-      const blockBelow = this.getBlockCallback(checkX, blockBelowY, checkZ);
+        const blockX = Math.floor(checkX);
+        const blockY = Math.floor(checkY);
+        const blockZ = Math.floor(checkZ);
 
-      if (blockBelow !== BlockType.AIR) {
-        // Collision with ground
-        const blockTop = blockBelowY + 1;
-        if (playerBottom < blockTop) {
-          // Check if we can step up (is there space above the block?)
-          const spaceAboveBlock = this.getBlockCallback(checkX, blockTop, checkZ);
-          const spaceAboveBlock2 = this.getBlockCallback(checkX, blockTop + 1, checkZ);
+        const block = this.getBlockCallback(blockX, blockY, blockZ);
 
-          if (spaceAboveBlock === BlockType.AIR && spaceAboveBlock2 === BlockType.AIR) {
-            // Can step up
-            newPos.y = blockTop + PLAYER_HEIGHT;
-            this.velocity.y = 0;
-            this.isOnGround = true;
-          } else {
-            // Cannot step up, treat as wall
-            const dx = newPos.x - checkX - 0.5;
-            const dz = newPos.z - checkZ - 0.5;
+        if (block !== BlockType.AIR) {
+          // Collision detected
 
-            if (Math.abs(dx) > Math.abs(dz)) {
-              newPos.x = checkX + 0.5 + Math.sign(dx) * (checkRadius + 0.1);
-            } else {
-              newPos.z = checkZ + 0.5 + Math.sign(dz) * (checkRadius + 0.1);
+          // Auto-step logic: Check if it's a low obstacle we can step up
+          if (yOffset === 0) { // Only step up from feet
+            const blockAbove = this.getBlockCallback(blockX, blockY + 1, blockZ);
+            const blockAbove2 = this.getBlockCallback(blockX, blockY + 2, blockZ);
+
+            if (blockAbove === BlockType.AIR && blockAbove2 === BlockType.AIR) {
+              // We can step up!
+              // But we handle this in vertical phase usually, or here by adjusting Y?
+              // Let's adjust Y here to "snap" up, but only if we are moving into it.
+              // Actually, better to just let horizontal movement happen but set a flag?
+              // Standard way: Snap Y up immediately if valid.
+
+              // Check if we have vertical clearance at current position to move up
+              const currentBlockX = Math.floor(this.camera.position.x);
+              const currentBlockZ = Math.floor(this.camera.position.z);
+              const headBlock = this.getBlockCallback(currentBlockX, Math.floor(playerBottom + playerHeight + 1), currentBlockZ);
+
+              if (headBlock === BlockType.AIR) {
+                this.camera.position.y = Math.floor(checkY) + 1 + playerHeight;
+                return; // Successfully stepped up, skip collision response
+              }
             }
+          }
+
+          // Resolve collision by pushing back
+          // Find the nearest face
+          const dx = checkX - (blockX + 0.5);
+          const dz = checkZ - (blockZ + 0.5);
+
+          if (Math.abs(dx) > Math.abs(dz)) {
+            // Push X
+            // If dx > 0, we are to the right, push right.
+            // Target X should be block center + 0.5 + radius + epsilon
+            const sign = Math.sign(dx);
+            newPos.x = blockX + 0.5 + sign * (0.5 + playerRadius + 0.001);
+          } else {
+            // Push Z
+            const sign = Math.sign(dz);
+            newPos.z = blockZ + 0.5 + sign * (0.5 + playerRadius + 0.001);
           }
         }
       }
+    }
+  }
 
-      // Check block above player
-      const blockAboveY = Math.floor(playerTop);
-      const blockAbove = this.getBlockCallback(checkX, blockAboveY, checkZ);
+  private checkVerticalCollisions(newPos: THREE.Vector3): void {
+    if (!this.getBlockCallback) return;
 
-      if (blockAbove !== BlockType.AIR) {
-        // Collision with ceiling
-        const blockBottom = blockAboveY;
-        if (playerTop > blockBottom) {
-          newPos.y = blockBottom - 0.2;
+    const playerRadius = 0.3;
+    const playerHeight = PLAYER_HEIGHT;
+
+    // Check center and corners
+    const checks = [
+      { x: 0, z: 0 },
+      { x: playerRadius, z: 0 },
+      { x: -playerRadius, z: 0 },
+      { x: 0, z: playerRadius },
+      { x: 0, z: -playerRadius },
+    ];
+
+    const playerBottom = newPos.y - playerHeight;
+    const playerTop = newPos.y; // Top of head (eyes are at top)
+
+    this.isOnGround = false;
+
+    // 1. Ground Check (Falling)
+    if (this.velocity.y <= 0) {
+      for (const check of checks) {
+        const checkX = Math.floor(newPos.x + check.x);
+        const checkZ = Math.floor(newPos.z + check.z);
+        const checkY = Math.floor(playerBottom); // Block feet are in
+
+        const block = this.getBlockCallback(checkX, checkY, checkZ);
+
+        if (block !== BlockType.AIR) {
+          // Hit ground
+          newPos.y = checkY + 1 + playerHeight;
           this.velocity.y = 0;
+          this.isOnGround = true;
+          break; // Found ground, stop checking
         }
       }
+    }
 
-      // Check blocks at player's body level (prevent walking through walls)
-      const blockMidY = Math.floor(newPos.y - PLAYER_HEIGHT / 2);
-      const blockMid = this.getBlockCallback(checkX, blockMidY, checkZ);
+    // 2. Ceiling Check (Jumping)
+    if (this.velocity.y > 0) {
+      for (const check of checks) {
+        const checkX = Math.floor(newPos.x + check.x);
+        const checkZ = Math.floor(newPos.z + check.z);
+        const checkY = Math.floor(playerTop + 0.1); // Block head is entering
 
-      if (blockMid !== BlockType.AIR) {
-        // Simple push-back from walls
-        const dx = newPos.x - checkX - 0.5;
-        const dz = newPos.z - checkZ - 0.5;
+        const block = this.getBlockCallback(checkX, checkY, checkZ);
 
-        if (Math.abs(dx) > Math.abs(dz)) {
-          newPos.x = checkX + 0.5 + Math.sign(dx) * (checkRadius + 0.1);
-        } else {
-          newPos.z = checkZ + 0.5 + Math.sign(dz) * (checkRadius + 0.1);
+        if (block !== BlockType.AIR) {
+          // Hit ceiling
+          newPos.y = checkY - 0.1;
+          this.velocity.y = 0;
+          break;
         }
       }
     }
