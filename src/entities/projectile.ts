@@ -9,27 +9,30 @@ export class Arrow extends Entity {
 
     constructor(x: number, y: number, z: number, direction: THREE.Vector3) {
         super(x, y, z);
-        this.width = 0.1;
-        this.height = 0.1;
+        this.velocity = direction.normalize().multiplyScalar(50); // High speed
+        this.mesh = this.createMesh();
+        this.mesh.position.copy(this.position);
 
-        // Set initial velocity
-        this.velocity.copy(direction).multiplyScalar(20); // High speed
-
-        // Rotate mesh to face direction
+        // Orient arrow to face direction
         this.mesh.lookAt(this.position.clone().add(direction));
     }
 
     createMesh(): THREE.Object3D {
-        // Simple stick
-        const geometry = new THREE.BoxGeometry(0.05, 0.05, 0.5);
-        const material = new THREE.MeshBasicMaterial({ color: 0x8b4513 });
+        const geometry = new THREE.BoxGeometry(0.1, 0.1, 0.5);
+        const material = new THREE.MeshLambertMaterial({ color: 0x888888 });
         return new THREE.Mesh(geometry, material);
     }
 
     update(deltaTime: number, worldManager: WorldManager): void {
+        if (this.isDead) return;
+
+        this.lifeTime += deltaTime;
+        if (this.lifeTime > 5.0) {
+            this.isDead = true;
+            return;
+        }
+
         if (this.stuck) {
-            this.lifeTime += deltaTime;
-            if (this.lifeTime > 10) this.isDead = true; // Despawn after 10s
             return;
         }
 
@@ -37,6 +40,29 @@ export class Arrow extends Entity {
 
         // Raycast to check for hit
         // Note: THREE.Raycaster checks meshes. We need block check.
+        // But for entities, we can use simple distance check for now or raycast against entity meshes.
+
+        // Check entity collisions
+        const entities = (window as any).gameEngine?.entityManager?.entities;
+        if (entities) {
+            for (const entity of entities) {
+                if (entity === this) continue;
+                if (entity.isDead) continue;
+
+                // Simple bounding box check
+                const dist = this.position.distanceTo(entity.position);
+                if (dist < 1.0) { // Hit radius
+                    if (entity.takeDamage) {
+                        entity.takeDamage(3); // Arrow does 3 damage
+                        console.log("Hit entity!");
+                        this.isDead = true; // Destroy arrow
+                        return;
+                    }
+                }
+            }
+        }
+
+        // Block collision check
         // So let's just step forward and check block.
 
         const nextPos = this.position.clone().add(this.velocity.clone().multiplyScalar(deltaTime));

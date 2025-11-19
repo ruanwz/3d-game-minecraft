@@ -31,6 +31,9 @@ export class GameEngine {
   private isRunning = false;
 
   constructor(container: HTMLElement) {
+    // Expose for entities to access entityManager
+    (window as any).gameEngine = this;
+
     // Initialize renderer
     this.renderer = new Renderer(container);
 

@@ -4,57 +4,75 @@ import { WorldManager } from '@/world/worldManager';
 import { BlockType } from '@/world/block';
 
 export class TNTEntity extends Entity {
-    private fuse: number = 3.0; // 3 seconds
-    private blinkTimer: number = 0;
+    private fuseTimer: number = 3.0; // 3 seconds
 
     constructor(x: number, y: number, z: number) {
         super(x, y, z);
         this.width = 0.9;
         this.height = 0.9;
+        this.mesh = this.createMesh();
+        this.mesh.position.copy(this.position);
     }
 
     createMesh(): THREE.Object3D {
-        const geometry = new THREE.BoxGeometry(0.9, 0.9, 0.9);
+        const geometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
         const material = new THREE.MeshLambertMaterial({ color: 0xff0000 });
         return new THREE.Mesh(geometry, material);
     }
 
     update(deltaTime: number, worldManager: WorldManager): void {
-        super.update(deltaTime, worldManager);
+        if (this.isDead) return;
 
-        // Fuse logic
-        this.fuse -= deltaTime;
-        this.blinkTimer += deltaTime;
+        super.update(deltaTime, worldManager); // Keep base update for position, velocity, etc.
+
+        this.fuseTimer -= deltaTime;
 
         // Blink effect
-        if (this.blinkTimer > 0.2) {
-            this.blinkTimer = 0;
-            const mat = (this.mesh as THREE.Mesh).material as THREE.MeshLambertMaterial;
-            mat.color.setHex(mat.color.getHex() === 0xff0000 ? 0xffffff : 0xff0000);
-        }
-
-        if (this.fuse <= 0) {
+        if (this.fuseTimer > 0) {
+            const blinkSpeed = 10; // Hz
+            const isWhite = Math.floor(this.fuseTimer * blinkSpeed) % 2 === 0;
+            (this.mesh as THREE.Mesh).material = new THREE.MeshLambertMaterial({
+                color: isWhite ? 0xffffff : 0xff0000
+            });
+        } else {
             this.explode(worldManager);
-            this.isDead = true;
         }
     }
 
     private explode(worldManager: WorldManager): void {
-        const radius = 4;
-        const cx = Math.floor(this.position.x);
-        const cy = Math.floor(this.position.y);
-        const cz = Math.floor(this.position.z);
+        this.isDead = true;
+        const radius = 3;
 
-        console.log('BOOM!');
-
+        // Destroy blocks
         for (let x = -radius; x <= radius; x++) {
             for (let y = -radius; y <= radius; y++) {
                 for (let z = -radius; z <= radius; z++) {
                     if (x * x + y * y + z * z <= radius * radius) {
+                        const bx = Math.floor(this.position.x + x);
+                        const by = Math.floor(this.position.y + y);
+                        const bz = Math.floor(this.position.z + z);
+
                         // Don't destroy bedrock (y=0)
-                        if (cy + y > 0) {
-                            worldManager.setBlock(cx + x, cy + y, cz + z, BlockType.AIR);
+                        if (by > 0) {
+                            worldManager.setBlock(bx, by, bz, BlockType.AIR);
                         }
+                    }
+                }
+            }
+        }
+
+        // Damage entities
+        const entities = (window as any).gameEngine?.entityManager?.entities;
+        if (entities) {
+            for (const entity of entities) {
+                if (entity === this) continue;
+                if (entity.isDead) continue;
+
+                const dist = this.position.distanceTo(entity.position);
+                if (dist <= radius + 2) { // Explosion radius + buffer
+                    const damage = Math.floor((1 - dist / (radius + 2)) * 20); // Max 20 damage
+                    if (damage > 0 && entity.takeDamage) {
+                        entity.takeDamage(damage);
                     }
                 }
             }
