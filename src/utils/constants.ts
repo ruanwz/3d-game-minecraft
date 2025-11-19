@@ -10,6 +10,7 @@ export const PLAYER_SPEED = 4.3;
 export const PLAYER_JUMP_FORCE = 8;
 export const GRAVITY = 24;
 export const MOUSE_SENSITIVITY = 0.002;
+export const FLY_SPEED = 15;
 
 // World generation
 export const WORLD_SEED = 12345;

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { InputManager } from './input';
-import { PLAYER_HEIGHT, PLAYER_SPEED, GRAVITY, PLAYER_JUMP_FORCE } from '@/utils/constants';
+import { PLAYER_HEIGHT, PLAYER_SPEED, GRAVITY, PLAYER_JUMP_FORCE, FLY_SPEED } from '@/utils/constants';
 import { BlockType } from '@/world/block';
 
 export class CameraController {
@@ -38,6 +38,10 @@ export class CameraController {
     this.camera.updateProjectionMatrix();
   }
 
+  private isFlying = false;
+  private lastJumpTime = 0;
+  private wasJumpPressed = false;
+
   update(deltaTime: number): void {
     if (!this.inputManager.isPointerLocked()) {
       return;
@@ -58,16 +62,38 @@ export class CameraController {
     // Get movement input
     const input = this.inputManager.getMovementInput();
 
-    // Calculate horizontal movement direction based on camera rotation
+    // Toggle Flight Mode (Double-tap Jump)
+    // Note: input.up is 1 if Space/Jump is pressed, -1 if Shift is pressed, 0 otherwise.
+    // We only care about the positive Jump press for toggling.
+    // We need raw Jump input for toggle.
+    // Let's check specific keys/buttons.
+    const rawJumpPressed = this.inputManager.isKeyPressed('Space') || (this.inputManager as any).touchControls?.isButtonPressed('jump');
+
+    if (rawJumpPressed && !this.wasJumpPressed) {
+      const now = Date.now();
+      if (now - this.lastJumpTime < 300) {
+        this.isFlying = !this.isFlying;
+        this.velocity.set(0, 0, 0); // Reset velocity when toggling
+      }
+      this.lastJumpTime = now;
+    }
+    this.wasJumpPressed = rawJumpPressed;
+
+    // Calculate movement direction
     this.direction.set(0, 0, 0);
 
-    // Get camera's forward and right vectors
     const forward = new THREE.Vector3();
     const right = new THREE.Vector3();
 
     this.camera.getWorldDirection(forward);
-    forward.y = 0; // Keep movement on horizontal plane
-    forward.normalize();
+
+    if (!this.isFlying) {
+      forward.y = 0; // Keep movement on horizontal plane when walking
+      forward.normalize();
+    } else {
+      // In flight, forward vector includes Y component (fly where you look)
+      forward.normalize();
+    }
 
     right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
 
@@ -75,44 +101,65 @@ export class CameraController {
     this.direction.addScaledVector(forward, input.forward);
     this.direction.addScaledVector(right, input.right);
 
-    // Normalize to prevent faster diagonal movement
+    // Normalize
     if (this.direction.length() > 0) {
       this.direction.normalize();
     }
 
-    // Apply speed to horizontal movement
-    this.direction.multiplyScalar(PLAYER_SPEED);
+    // Apply speed
+    const currentSpeed = this.isFlying ? FLY_SPEED : PLAYER_SPEED;
+    this.direction.multiplyScalar(currentSpeed);
 
-    // --- Physics Step 1: Horizontal Movement ---
-    const horizontalVelocity = this.direction.clone().multiplyScalar(deltaTime);
-    const newPos = this.camera.position.clone().add(horizontalVelocity);
+    if (this.isFlying) {
+      // Flight Physics
+      const moveVelocity = this.direction.clone().multiplyScalar(deltaTime);
 
-    // Check horizontal collisions (X/Z)
-    this.checkHorizontalCollisions(newPos);
+      // Vertical movement (Ascend/Descend)
+      // input.up is 1 (Jump) or -1 (Shift)
+      if (input.up !== 0) {
+        moveVelocity.y += input.up * currentSpeed * deltaTime;
+      }
 
-    // Apply valid horizontal position
-    this.camera.position.x = newPos.x;
-    this.camera.position.z = newPos.z;
+      this.camera.position.add(moveVelocity);
 
-    // --- Physics Step 2: Vertical Movement ---
-    // Apply gravity
-    this.velocity.y -= GRAVITY * deltaTime;
+      // Simple collision check to prevent flying through world boundaries if needed
+      // But creative mode usually allows clipping. Let's keep it simple.
+      if (this.camera.position.y < 1) this.camera.position.y = 1;
 
-    // Check for jump
-    if (input.up > 0 && this.isOnGround) {
-      this.velocity.y = PLAYER_JUMP_FORCE;
-      this.isOnGround = false;
+    } else {
+      // Normal Physics (Walking)
+
+      // --- Physics Step 1: Horizontal Movement ---
+      const horizontalVelocity = this.direction.clone().multiplyScalar(deltaTime);
+      const newPos = this.camera.position.clone().add(horizontalVelocity);
+
+      // Check horizontal collisions (X/Z)
+      this.checkHorizontalCollisions(newPos);
+
+      // Apply valid horizontal position
+      this.camera.position.x = newPos.x;
+      this.camera.position.z = newPos.z;
+
+      // --- Physics Step 2: Vertical Movement ---
+      // Apply gravity
+      this.velocity.y -= GRAVITY * deltaTime;
+
+      // Check for jump
+      if (input.up > 0 && this.isOnGround) {
+        this.velocity.y = PLAYER_JUMP_FORCE;
+        this.isOnGround = false;
+      }
+
+      // Apply vertical velocity
+      const verticalMovement = this.velocity.y * deltaTime;
+      newPos.y = this.camera.position.y + verticalMovement;
+
+      // Check vertical collisions (Y)
+      this.checkVerticalCollisions(newPos);
+
+      // Apply valid vertical position
+      this.camera.position.y = newPos.y;
     }
-
-    // Apply vertical velocity
-    const verticalMovement = this.velocity.y * deltaTime;
-    newPos.y = this.camera.position.y + verticalMovement;
-
-    // Check vertical collisions (Y)
-    this.checkVerticalCollisions(newPos);
-
-    // Apply valid vertical position
-    this.camera.position.y = newPos.y;
 
     // Update HUD
     this.updateHUD();
