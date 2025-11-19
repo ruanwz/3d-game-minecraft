@@ -211,4 +211,12 @@ export class TouchControls {
     isButtonPressed(action: string): boolean {
         return this.buttons.has(action);
     }
+
+    isAnyButtonPressed(): boolean {
+        return this.buttons.size > 0;
+    }
+
+    isActive(): boolean {
+        return this.joystickData.active || this.lookData.active || this.buttons.size > 0;
+    }
 }

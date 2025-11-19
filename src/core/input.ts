@@ -141,7 +141,7 @@ export class InputManager {
     // But strictly speaking, pointer lock API isn't used. 
     // However, the game logic checks this to enable controls.
     // Let's always return true for touch devices so controls work without clicking.
-    if ('ontouchstart' in window) return true;
+    if ('ontouchstart' in window || navigator.maxTouchPoints > 0 || this.touchControls.isActive()) return true;
 
     return this.pointerLocked;
   }
