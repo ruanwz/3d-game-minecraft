@@ -8,15 +8,33 @@ export class InputManager {
   private mouseClicked = new Set<number>(); // Track click events (cleared each frame)
   private pointerLocked = false;
   private touchControls: TouchControls;
+  public onEscape: () => void = () => { };
+  private isEnabled = true;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.touchControls = new TouchControls();
     this.setupEventListeners();
   }
 
+  setEnabled(enabled: boolean) {
+    this.isEnabled = enabled;
+    if (!enabled) {
+      this.unlockPointer();
+    }
+  }
+
+  unlockPointer() {
+    document.exitPointerLock();
+  }
+
   private setupEventListeners(): void {
     // Keyboard events
     window.addEventListener('keydown', (e) => {
+      if (e.code === 'Escape') {
+        this.onEscape();
+        // Don't prevent default for Esc, let browser handle it too (exits pointer lock)
+      }
+
       this.keys.add(e.code);
 
       // Prevent default browser behavior for game keys
@@ -31,6 +49,8 @@ export class InputManager {
 
     // Mouse events
     this.canvas.addEventListener('click', () => {
+      if (!this.isEnabled) return;
+
       // Only request pointer lock if not on a touch device (simple check)
       if (!this.pointerLocked && !('ontouchstart' in window)) {
         this.canvas.requestPointerLock();

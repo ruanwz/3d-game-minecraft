@@ -151,4 +151,26 @@ export class WorldManager {
     this.chunks.forEach(chunk => chunk.dispose(this.scene));
     this.chunks.clear();
   }
+
+  getModifiedChunks(): Array<{ x: number; z: number; blocks: string }> {
+    const modifiedChunks: Array<{ x: number; z: number; blocks: string }> = [];
+    this.chunks.forEach(chunk => {
+      if (chunk.isModified) {
+        modifiedChunks.push(chunk.serialize());
+      }
+    });
+    return modifiedChunks;
+  }
+
+  restoreChunks(data: Array<{ x: number; z: number; blocks: string }>): void {
+    data.forEach(chunkData => {
+      let chunk = this.getChunk(chunkData.x, chunkData.z);
+      if (!chunk) {
+        chunk = new Chunk(chunkData.x, chunkData.z);
+        this.setChunk(chunk);
+      }
+      chunk.deserialize(chunkData.blocks);
+      chunk.updateMesh(this.scene);
+    });
+  }
 }

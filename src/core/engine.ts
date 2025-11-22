@@ -11,6 +11,9 @@ import { TNTEntity } from '@/entities/explosive';
 import { FIXED_TIME_STEP, RENDER_DISTANCE } from '@/utils/constants';
 import * as THREE from 'three';
 
+import { Menu } from '@/ui/menu';
+import { Hotbar } from '@/ui/hotbar';
+
 export class GameEngine {
   private renderer: Renderer;
   private cameraController: CameraController;
@@ -19,9 +22,20 @@ export class GameEngine {
   public entityManager: EntityManager;
   private raycaster: VoxelRaycaster;
 
+  private menu: Menu;
+  private hotbar: Hotbar;
+
   private selectedBlock: RaycastHit | null = null;
   private selectionBox: THREE.LineSegments | null = null;
   private currentBlockType: BlockType = BlockType.GRASS;
+
+  // Game State
+  private availableItems: BlockType[] = [
+    BlockType.GRASS, BlockType.DIRT, BlockType.STONE, BlockType.WOOD,
+    BlockType.LEAVES, BlockType.SAND, BlockType.PLANKS, BlockType.BRICKS,
+    BlockType.TNT, BlockType.LOG
+  ];
+  private hotbarItems: BlockType[] = [];
 
   private lastTime = 0;
   private accumulator = 0;
@@ -29,6 +43,7 @@ export class GameEngine {
   private lastFpsUpdate = 0;
 
   private isRunning = false;
+  private isPaused = false;
 
   constructor(container: HTMLElement) {
     // Expose for entities to access entityManager
@@ -60,8 +75,37 @@ export class GameEngine {
     // Create selection box
     this.createSelectionBox();
 
+    // Initialize UI
+    this.hotbarItems = [...this.availableItems].slice(0, 9); // Default first 9
+    this.hotbar = new Hotbar((blockType) => {
+      this.currentBlockType = blockType;
+    });
+    this.hotbar.setItems(this.hotbarItems);
+
+    this.menu = new Menu({
+      onResume: () => this.resumeGame(),
+      onSave: (name) => this.saveGame(name),
+      onLoad: (id) => this.loadGame(id),
+      onDelete: (id) => this.deleteSave(id),
+      getSaves: () => this.getSaves(),
+      isItemAvailable: (type) => this.availableItems.includes(type),
+      toggleItemAvailability: (type, available) => this.toggleItemAvailability(type, available)
+    });
+
+    // Setup Input Callbacks
+    this.inputManager.onEscape = () => {
+      if (this.menu.isOpen()) {
+        this.resumeGame();
+      } else {
+        this.pauseGame();
+      }
+    };
+
     // Generate initial chunks
     this.generateChunksAroundPlayer();
+
+    // Load game if exists
+    this.loadGame();
 
     // Hide loading screen
     this.hideLoading();
@@ -162,16 +206,15 @@ export class GameEngine {
     // Update debug info
     const debugElement = document.getElementById('debug');
     if (debugElement) {
-      // We need access to touchControls to show active buttons. 
-      // Since inputManager has it private, we might need to expose it or just rely on console logs for now?
-      // Actually, let's cast inputManager to any to access it for debug, or better, add a method to InputManager.
-      // For now, let's just show if pointer is locked.
       const locked = this.inputManager.isPointerLocked();
       debugElement.textContent = `Locked: ${locked}`;
+    }
 
-      // Access touch controls via a dirty cast for debug purposes if needed, 
-      // but let's try to be cleaner. 
-      // Let's skip button debug in HUD for a second and focus on the cooldown.
+    // Handle Hotbar Selection (1-9)
+    for (let i = 1; i <= 9; i++) {
+      if (this.inputManager.isKeyPressed(`Digit${i}`)) {
+        this.hotbar.selectSlot(i - 1);
+      }
     }
 
     if (!this.inputManager.isPointerLocked()) {
@@ -193,7 +236,7 @@ export class GameEngine {
           Math.floor(this.selectedBlock.blockPosition.z),
           BlockType.AIR
         );
-        console.log('Block broken!');
+        // console.log('Block broken!');
         this.lastInteractionTime = now;
       }
     }
@@ -208,7 +251,7 @@ export class GameEngine {
           Math.floor(placePos.z),
           this.currentBlockType
         );
-        console.log('Block placed!');
+        // console.log('Block placed!');
         this.lastInteractionTime = now;
       }
     }
@@ -221,7 +264,7 @@ export class GameEngine {
 
       const arrow = new Arrow(spawnPos.x, spawnPos.y, spawnPos.z, cameraDir);
       this.entityManager.addEntity(arrow);
-      console.log('Arrow shot!');
+      // console.log('Arrow shot!');
       this.lastInteractionTime = now;
     }
 
@@ -230,16 +273,19 @@ export class GameEngine {
       const spawnPos = this.cameraController.camera.position.clone();
       const tnt = new TNTEntity(spawnPos.x, spawnPos.y, spawnPos.z);
       this.entityManager.addEntity(tnt);
-      console.log('TNT placed!');
+      // console.log('TNT placed!');
       this.lastInteractionTime = now;
     }
   }
   private updatePhysics(deltaTime: number): void {
+    if (this.isPaused) return;
     // Update camera/player physics
     this.cameraController.update(deltaTime);
   }
 
   private updateGame(_deltaTime: number): void {
+    if (this.isPaused) return;
+
     // Update chunks based on player position
     this.updateChunks();
 
@@ -323,5 +369,157 @@ export class GameEngine {
     this.stop();
     this.worldManager.clear();
     this.renderer.dispose();
+  }
+
+  // --- Game State & UI Methods ---
+
+  pauseGame() {
+    this.isPaused = true;
+    this.inputManager.setEnabled(false);
+    this.menu.show();
+  }
+
+  resumeGame() {
+    this.isPaused = false;
+    this.inputManager.setEnabled(true);
+    this.menu.hide();
+    // Request pointer lock again if needed, but usually user click does it
+    // However, since we are resuming, we might want to hint the user to click
+  }
+
+  // --- Save System ---
+
+  getSaves(): Array<{ id: string; name: string; date: number }> {
+    const savesStr = localStorage.getItem('minecraft_saves');
+    if (!savesStr) return [];
+    try {
+      const saves = JSON.parse(savesStr);
+      return Object.values(saves).map((save: any) => ({
+        id: save.id,
+        name: save.name,
+        date: save.date
+      })).sort((a, b) => b.date - a.date);
+    } catch (e) {
+      console.error('Failed to parse saves', e);
+      return [];
+    }
+  }
+
+  saveGame(name?: string) {
+    const rotation = this.cameraController.getRotation();
+    const saveData = {
+      player: {
+        position: this.cameraController.camera.position.toArray(),
+        rotation: { yaw: rotation.yaw, pitch: rotation.pitch }
+      },
+      availableItems: this.availableItems,
+      world: this.worldManager.getModifiedChunks()
+    };
+
+    const savesStr = localStorage.getItem('minecraft_saves');
+    let saves: Record<string, any> = {};
+    if (savesStr) {
+      try {
+        saves = JSON.parse(savesStr);
+      } catch (e) {
+        console.error('Failed to parse existing saves', e);
+      }
+    }
+
+    const id = Date.now().toString();
+    const saveName = name || `Save ${new Date().toLocaleString()}`;
+
+    saves[id] = {
+      id,
+      name: saveName,
+      date: Date.now(),
+      data: saveData
+    };
+
+    localStorage.setItem('minecraft_saves', JSON.stringify(saves));
+    console.log('Game Saved', id);
+  }
+
+  loadGame(id?: string) {
+    const savesStr = localStorage.getItem('minecraft_saves');
+    if (!savesStr) return;
+
+    try {
+      const saves = JSON.parse(savesStr);
+      let saveToLoad;
+
+      if (id) {
+        saveToLoad = saves[id];
+      } else {
+        // Load most recent if no ID provided (auto-load)
+        const sorted = Object.values(saves).sort((a: any, b: any) => b.date - a.date);
+        if (sorted.length > 0) {
+          saveToLoad = sorted[0];
+        }
+      }
+
+      if (saveToLoad && saveToLoad.data) {
+        const data = saveToLoad.data;
+        if (data.player) {
+          const pos = data.player.position;
+          this.cameraController.setPosition(pos[0], pos[1], pos[2]);
+
+          if (data.player.rotation) {
+            if (Array.isArray(data.player.rotation)) {
+              // Fallback
+            } else {
+              this.cameraController.setRotation(data.player.rotation.yaw, data.player.rotation.pitch);
+            }
+          }
+        }
+        if (data.availableItems) {
+          this.availableItems = data.availableItems;
+          this.updateHotbarItems();
+        }
+        if (data.world) {
+          this.worldManager.restoreChunks(data.world);
+        }
+        console.log('Game Loaded', saveToLoad.name);
+      }
+    } catch (e) {
+      console.error('Failed to load save', e);
+    }
+  }
+
+  deleteSave(id: string) {
+    const savesStr = localStorage.getItem('minecraft_saves');
+    if (!savesStr) return;
+
+    try {
+      const saves = JSON.parse(savesStr);
+      if (saves[id]) {
+        delete saves[id];
+        localStorage.setItem('minecraft_saves', JSON.stringify(saves));
+        console.log('Save Deleted', id);
+      }
+    } catch (e) {
+      console.error('Failed to delete save', e);
+    }
+  }
+
+  isItemAvailable(type: BlockType): boolean {
+    return this.availableItems.includes(type);
+  }
+
+  toggleItemAvailability(type: BlockType, available: boolean) {
+    if (available) {
+      if (!this.availableItems.includes(type)) {
+        this.availableItems.push(type);
+      }
+    } else {
+      this.availableItems = this.availableItems.filter(t => t !== type);
+    }
+    this.updateHotbarItems();
+  }
+
+  private updateHotbarItems() {
+    // Update hotbar with available items
+    this.hotbarItems = [...this.availableItems].slice(0, 9);
+    this.hotbar.setItems(this.hotbarItems);
   }
 }

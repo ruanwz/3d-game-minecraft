@@ -9,6 +9,7 @@ export class Chunk {
   public z: number; // Chunk Z coordinate
   public blocks: Uint8Array;
   public mesh: THREE.Mesh | null = null;
+  public isModified: boolean = false;
   private needsUpdate = true;
   private static terrainNoise: TerrainNoise | null = null;
 
@@ -41,6 +42,30 @@ export class Chunk {
     const index = x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
     this.blocks[index] = blockType;
     this.needsUpdate = true;
+    this.isModified = true;
+  }
+
+  serialize(): { x: number; z: number; blocks: string } {
+    let binary = '';
+    const len = this.blocks.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(this.blocks[i]);
+    }
+    return {
+      x: this.x,
+      z: this.z,
+      blocks: btoa(binary)
+    };
+  }
+
+  deserialize(base64: string): void {
+    const binary = atob(base64);
+    const len = binary.length;
+    for (let i = 0; i < len; i++) {
+      this.blocks[i] = binary.charCodeAt(i);
+    }
+    this.needsUpdate = true;
+    this.isModified = true;
   }
 
   // Generate terrain using Perlin noise

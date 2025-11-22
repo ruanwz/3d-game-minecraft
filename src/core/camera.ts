@@ -332,6 +332,22 @@ export class CameraController {
     return this.camera.position.clone();
   }
 
+  setPosition(x: number, y: number, z: number): void {
+    this.camera.position.set(x, y, z);
+    this.velocity.set(0, 0, 0);
+    this.isOnGround = false;
+  }
+
+  getRotation(): { yaw: number; pitch: number } {
+    return { yaw: this.rotation.y, pitch: this.rotation.x };
+  }
+
+  setRotation(yaw: number, pitch: number): void {
+    this.rotation.y = yaw;
+    this.rotation.x = pitch;
+    this.camera.quaternion.setFromEuler(this.rotation);
+  }
+
   getChunkPosition(): { x: number; z: number } {
     return {
       x: Math.floor(this.camera.position.x / 16),
