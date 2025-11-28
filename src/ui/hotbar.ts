@@ -1,4 +1,4 @@
-import { BlockType, BLOCK_REGISTRY, getBlockColor } from '@/world/block';
+import { BlockType } from '@/world/block';
 import { generateBlockIcon } from './icons';
 
 export class Hotbar {

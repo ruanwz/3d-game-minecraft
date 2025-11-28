@@ -1,6 +1,6 @@
 
 import { BlockType, BLOCK_REGISTRY } from '@/world/block';
-import { GameEngine } from '@/core/engine';
+
 
 export interface MenuCallbacks {
     onResume: () => void;
